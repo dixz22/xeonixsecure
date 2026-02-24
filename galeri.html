@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xeonix Gallery</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<style>
+body{
+margin:0;
+font-family:Arial, sans-serif;
+background:#f4f6f8;
+color:#222;
+}
+header{
+background:#111;
+color:white;
+padding:15px;
+text-align:center;
+font-weight:bold;
+}
+.container{
+padding:15px;
+}
+.grid{
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+gap:10px;
+}
+.grid img{
+width:100%;
+border-radius:8px;
+cursor:pointer;
+object-fit:cover;
+height:120px;
+}
+
+.modal{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.9);
+display:none;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+z-index:999;
+}
+
+.modal img{
+max-width:90%;
+max-height:70%;
+border-radius:10px;
+}
+
+.modal-controls{
+margin-top:15px;
+}
+
+button{
+padding:10px 15px;
+border:none;
+border-radius:6px;
+cursor:pointer;
+margin:5px;
+}
+
+.primary{background:#111;color:white;}
+.danger{background:#e53935;color:white;}
+.info{background:#1976d2;color:white;}
+
+.nav{
+position:absolute;
+top:50%;
+font-size:30px;
+color:white;
+cursor:pointer;
+padding:10px;
+user-select:none;
+}
+.nav.left{left:10px;}
+.nav.right{right:10px;}
+</style>
+</head>
+<body>
+
+<header>Xeonix Gallery</header>
+
+<div class="container">
+<div id="galleryGrid" class="grid">Loading...</div>
+<br>
+<button class="primary" onclick="goBack()">← Kembali ke Admin</button>
+</div>
+
+<!-- Modal Preview -->
+<div id="modal" class="modal">
+<span class="nav left" onclick="prevImage()">❮</span>
+<img id="modalImg">
+<span class="nav right" onclick="nextImage()">❯</span>
+
+<div class="modal-controls">
+<button class="info" onclick="downloadImage()">Download</button>
+<button class="danger" onclick="deleteImage()">Hapus</button>
+<button class="primary" onclick="closeModal()">Tutup</button>
+</div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyC71owbERIUTdALLUeTILc9KTWYuZ5TNqQ",
+  authDomain: "xeonix-e8b4d.firebaseapp.com",
+  databaseURL: "https://xeonix-e8b4d-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "xeonix-e8b4d",
+  storageBucket: "xeonix-e8b4d.firebasestorage.app",
+  messagingSenderId: "1069914635197",
+  appId: "1:1069914635197:web:69cfb35ca50b05ac5670d4"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const deviceId="device1";
+
+let photos = [];
+let currentIndex = 0;
+
+function goBack(){
+window.location.href="admin.html";
+}
+
+db.ref("devices/"+deviceId+"/photos").on("value",snap=>{
+photos=[];
+let html="";
+snap.forEach(child=>{
+photos.push({key:child.key,...child.val()});
+});
+photos.reverse();
+
+if(photos.length===0){
+html="Belum ada foto";
+}else{
+photos.forEach((p,i)=>{
+html+=`<img src="${p.image}" onclick="openModal(${i})">`;
+});
+}
+document.getElementById("galleryGrid").innerHTML=html;
+});
+
+function openModal(index){
+currentIndex=index;
+document.getElementById("modal").style.display="flex";
+document.getElementById("modalImg").src=photos[index].image;
+}
+
+function closeModal(){
+document.getElementById("modal").style.display="none";
+}
+
+function nextImage(){
+if(currentIndex < photos.length-1){
+currentIndex++;
+updateModal();
+}
+}
+
+function prevImage(){
+if(currentIndex > 0){
+currentIndex--;
+updateModal();
+}
+}
+
+function updateModal(){
+document.getElementById("modalImg").src=photos[currentIndex].image;
+}
+
+function deleteImage(){
+if(confirm("Hapus foto ini?")){
+db.ref("devices/"+deviceId+"/photos/"+photos[currentIndex].key).remove();
+closeModal();
+}
+}
+
+function downloadImage(){
+let a=document.createElement("a");
+a.href=photos[currentIndex].image;
+a.download="xeonix_photo_"+Date.now()+".jpg";
+a.click();
+}
+
+// Swipe gesture
+let startX=0;
+document.getElementById("modal").addEventListener("touchstart",e=>{
+startX=e.touches[0].clientX;
+});
+document.getElementById("modal").addEventListener("touchend",e=>{
+let endX=e.changedTouches[0].clientX;
+if(startX-endX>50){ nextImage(); }
+if(endX-startX>50){ prevImage(); }
+});
+</script>
+
+</body>
+</html>
