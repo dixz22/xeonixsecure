@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xeonix Gallery</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<style>
+body{
+margin:0;
+font-family:Arial, sans-serif;
+background:#0f172a;
+color:white;
+}
+
+header{
+background:#111827;
+padding:15px;
+text-align:center;
+font-weight:bold;
+font-size:18px;
+}
+
+.container{
+padding:15px;
+}
+
+.grid{
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+gap:12px;
+}
+
+.grid img{
+width:100%;
+height:130px;
+object-fit:cover;
+border-radius:10px;
+cursor:pointer;
+background:#1f2937;
+transition:transform .2s ease;
+}
+
+.grid img:hover{
+transform:scale(1.03);
+}
+
+.empty{
+text-align:center;
+color:#94a3b8;
+grid-column:1/-1;
+padding:30px 0;
+}
+
+/* Modal */
+.modal{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.95);
+display:none;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+z-index:999;
+}
+
+.modal img{
+max-width:92%;
+max-height:70%;
+border-radius:12px;
+}
+
+.controls{
+margin-top:15px;
+}
+
+button{
+padding:10px 15px;
+border:none;
+border-radius:8px;
+cursor:pointer;
+margin:5px;
+font-size:14px;
+}
+
+.primary{background:#111827;color:white;}
+.info{background:#2563eb;color:white;}
+.danger{background:#dc2626;color:white;}
+
+.nav{
+position:absolute;
+top:50%;
+font-size:35px;
+color:white;
+cursor:pointer;
+padding:10px;
+user-select:none;
+}
+
+.nav.left{left:10px;}
+.nav.right{right:10px;}
+</style>
+</head>
+<body>
+
+<header>Xeonix Gallery</header>
+
+<div class="container">
+<div id="galleryGrid" class="grid">
+<div class="empty">Memuat foto...</div>
+</div>
+<br>
+<button class="primary" onclick="goBack()">← Kembali ke Admin</button>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal">
+<span class="nav left" onclick="prev()">❮</span>
+<img id="modalImg">
+<span class="nav right" onclick="next()">❯</span>
+
+<div class="controls">
+<button class="info" onclick="download()">Download</button>
+<button class="danger" onclick="removePhoto()">Hapus</button>
+<button class="primary" onclick="closeModal()">Tutup</button>
+</div>
+</div>
+
+<script>
+const firebaseConfig = {
+apiKey: "AIzaSyC71owbERIUTdALLUeTILc9KTWYuZ5TNqQ",
+authDomain: "xeonix-e8b4d.firebaseapp.com",
+databaseURL: "https://xeonix-e8b4d-default-rtdb.asia-southeast1.firebasedatabase.app",
+projectId: "xeonix-e8b4d",
+storageBucket: "xeonix-e8b4d.firebasestorage.app",
+messagingSenderId: "1069914635197",
+appId: "1:1069914635197:web:69cfb35ca50b05ac5670d4"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const deviceId="device1";
+
+let photos=[];
+let currentIndex=0;
+
+function goBack(){
+window.location.href="admin.html";
+}
+
+function renderGallery(snapshot){
+const grid=document.getElementById("galleryGrid");
+grid.innerHTML="";
+photos=[];
+
+if(!snapshot.exists()){
+grid.innerHTML="<div class='empty'>Belum ada foto.</div>";
+return;
+}
+
+snapshot.forEach(child=>{
+let data=child.val();
+if(data && data.image){
+photos.push({
+key:child.key,
+image:data.image,
+time:data.time || 0
+});
+}
+});
+
+photos.sort((a,b)=>b.time-a.time);
+
+if(photos.length===0){
+grid.innerHTML="<div class='empty'>Belum ada foto.</div>";
+return;
+}
+
+photos.forEach((p,i)=>{
+let img=document.createElement("img");
+img.src=p.image;
+img.onclick=()=>openModal(i);
+grid.appendChild(img);
+});
+}
+
+db.ref("devices/"+deviceId+"/photos")
+.on("value",snap=>{
+renderGallery(snap);
+},err=>{
+document.getElementById("galleryGrid").innerHTML=
+"<div class='empty'>Gagal memuat galeri.</div>";
+});
+
+function openModal(index){
+currentIndex=index;
+document.getElementById("modal").style.display="flex";
+updateModal();
+}
+
+function closeModal(){
+document.getElementById("modal").style.display="none";
+}
+
+function updateModal(){
+document.getElementById("modalImg").src=photos[currentIndex].image;
+}
+
+function next(){
+if(currentIndex<photos.length-1){
+currentIndex++;
+updateModal();
+}
+}
+
+function prev(){
+if(currentIndex>0){
+currentIndex--;
+updateModal();
+}
+}
+
+function download(){
+let a=document.createElement("a");
+a.href=photos[currentIndex].image;
+a.download="xeonix_"+Date.now()+".jpg";
+a.click();
+}
+
+function removePhoto(){
+if(confirm("Hapus foto ini?")){
+db.ref("devices/"+deviceId+"/photos/"+photos[currentIndex].key).remove();
+closeModal();
+}
+}
+
+/* Swipe Support */
+let startX=0;
+document.getElementById("modal").addEventListener("touchstart",e=>{
+startX=e.touches[0].clientX;
+});
+document.getElementById("modal").addEventListener("touchend",e=>{
+let endX=e.changedTouches[0].clientX;
+if(startX-endX>50){next();}
+if(endX-startX>50){prev();}
+});
+</script>
+
+</body>
+</html>

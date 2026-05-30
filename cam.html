@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xeonix Camera</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<style>
+body{
+margin:0;
+font-family:Arial, sans-serif;
+background:#f4f6f8;
+color:#222;
+}
+header{
+background:#111;
+color:white;
+padding:15px;
+text-align:center;
+font-weight:bold;
+}
+.container{
+padding:15px;
+}
+.card{
+background:white;
+padding:20px;
+margin-bottom:15px;
+border-radius:10px;
+box-shadow:0 2px 8px rgba(0,0,0,0.05);
+text-align:center;
+}
+button{
+padding:10px 16px;
+border:none;
+border-radius:6px;
+cursor:pointer;
+margin:5px;
+font-size:14px;
+}
+.info{background:#1976d2;color:white;}
+.primary{background:#111;color:white;}
+.modeActive{
+background:#2e7d32 !important;
+}
+.status{
+font-weight:bold;
+margin-bottom:10px;
+}
+.preview{
+width:100%;
+max-height:400px;
+object-fit:contain;
+border-radius:8px;
+margin-top:10px;
+}
+.loading{
+color:#1976d2;
+font-weight:bold;
+}
+.success{
+color:green;
+font-weight:bold;
+}
+.error{
+color:red;
+font-weight:bold;
+}
+</style>
+</head>
+<body>
+
+<header>Xeonix Camera Control</header>
+
+<div class="container">
+
+<div class="card">
+<div id="deviceStatus" class="status">Checking device...</div>
+
+<button id="frontBtn" class="info" onclick="selectFront()">🔄 Kamera Depan</button>
+<button id="backBtn" class="info" onclick="selectBack()">🔄 Kamera Belakang</button>
+<br><br>
+<button class="primary" onclick="capture()">📸 Ambil Foto</button>
+
+<div id="cameraStatus" style="margin-top:15px;"></div>
+</div>
+
+<div class="card">
+<h3>Preview</h3>
+<div id="previewArea">Belum ada snapshot</div>
+</div>
+
+<div class="card">
+<button class="primary" onclick="goBack()">← Kembali ke Admin</button>
+</div>
+
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyC71owbERIUTdALLUeTILc9KTWYuZ5TNqQ",
+  authDomain: "xeonix-e8b4d.firebaseapp.com",
+  databaseURL: "https://xeonix-e8b4d-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "xeonix-e8b4d",
+  storageBucket: "xeonix-e8b4d.firebasestorage.app",
+  messagingSenderId: "1069914635197",
+  appId: "1:1069914635197:web:69cfb35ca50b05ac5670d4"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const deviceId="device1";
+
+let selectedCamera = "user";
+let waitingResponse = false;
+
+function goBack(){
+window.location.href="admin.html";
+}
+
+function selectFront(){
+selectedCamera = "user";
+document.getElementById("frontBtn").classList.add("modeActive");
+document.getElementById("backBtn").classList.remove("modeActive");
+document.getElementById("cameraStatus").innerHTML =
+"<div>Mode: Kamera Depan</div>";
+}
+
+function selectBack(){
+selectedCamera = "environment";
+document.getElementById("backBtn").classList.add("modeActive");
+document.getElementById("frontBtn").classList.remove("modeActive");
+document.getElementById("cameraStatus").innerHTML =
+"<div>Mode: Kamera Belakang</div>";
+}
+
+function capture(){
+if(!waitingResponse){
+waitingResponse = true;
+
+document.getElementById("cameraStatus").innerHTML =
+"<div class='loading'>Mengambil foto...</div>";
+
+if(selectedCamera === "user"){
+sendCommand("take_photo_front");
+}else{
+sendCommand("take_photo_back");
+}
+
+// Timeout jika tidak ada respon
+setTimeout(()=>{
+if(waitingResponse){
+document.getElementById("cameraStatus").innerHTML =
+"<div class='error'>Gagal terhubung ke kamera</div>";
+waitingResponse = false;
+}
+},8000);
+
+}
+}
+
+function sendCommand(cmd){
+db.ref("devices/"+deviceId+"/command").set(cmd);
+}
+
+// DEVICE ONLINE STATUS
+db.ref("devices/"+deviceId+"/online").on("value",snap=>{
+if(snap.val()){
+document.getElementById("deviceStatus").innerHTML="Device Online";
+document.getElementById("deviceStatus").style.color="green";
+}else{
+document.getElementById("deviceStatus").innerHTML="Device Offline";
+document.getElementById("deviceStatus").style.color="red";
+}
+});
+
+// LISTEN PHOTO UPDATE
+db.ref("devices/"+deviceId+"/photos").limitToLast(1).on("value",snap=>{
+snap.forEach(child=>{
+let d=child.val();
+waitingResponse = false;
+
+document.getElementById("cameraStatus").innerHTML =
+"<div class='success'>Kamera berhasil mengambil foto ✔</div>";
+
+document.getElementById("previewArea").innerHTML =
+`<img src="${d.image}" class="preview">
+<p>${new Date(d.time).toLocaleString()}</p>`;
+});
+});
+</script>
+
+</body>
+</html>
