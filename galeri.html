@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xeonix Gallery</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg-main: #0b0f19;
+  --bg-card: #111827;
+  --text-main: #f8fafc;
+  --border: #1f2937;
+  --primary: #3b82f6;
+  --danger: #ef4444;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-main);
+  color: var(--text-main);
+}
+
+header {
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 20px 24px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.container {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; }
+}
+
+.grid img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  transition: all 0.3s ease;
+}
+
+.grid img:hover {
+  transform: scale(1.02);
+  border-color: #4b5563;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+}
+
+.empty {
+  text-align: center;
+  color: #64748b;
+  grid-column: 1/-1;
+  padding: 60px 0;
+  font-size: 15px;
+}
+
+.btn-back {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  margin: 40px auto 20px auto;
+  background: var(--bg-card);
+  color: var(--text-main);
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+}
+.btn-back:hover { background: #1f2937; }
+
+/* Modal Premium Lightbox */
+.modal {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(5, 5, 5, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: none; flex-direction: column; justify-content: center; align-items: center;
+  z-index: 999;
+}
+
+.modal img {
+  max-width: 85%;
+  max-height: 70vh;
+  border-radius: 8px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+  object-fit: contain;
+}
+
+.controls {
+  margin-top: 30px;
+  display: flex;
+  gap: 12px;
+}
+
+.controls button {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.controls button:hover { filter: brightness(1.15); transform: translateY(-1px); }
+
+.primary { background: #374151; color: white; }
+.info { background: var(--text-main); color: #000; }
+.danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+.danger:hover { background: var(--danger); color: white; }
+
+.nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 32px;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer;
+  padding: 20px;
+  user-select: none;
+  transition: color 0.2s;
+}
+.nav:hover { color: white; }
+.nav.left { left: 20px; }
+.nav.right { right: 20px; }
+@media (max-width: 768px) { .nav { padding: 10px; font-size: 24px; } .nav.left { left: 5px; } .nav.right { right: 5px; } }
+</style>
+</head>
+<body>
+
+<header>Media Vault</header>
+
+<div class="container">
+<div id="galleryGrid" class="grid">
+<div class="empty">Loading assets...</div>
+</div>
+<button class="btn-back" onclick="goBack()">Return to Dashboard</button>
+</div>
+
+<div id="modal" class="modal">
+<span class="nav left" onclick="prev()">❮</span>
+<img id="modalImg">
+<span class="nav right" onclick="next()">❯</span>
+
+<div class="controls">
+<button class="info" onclick="download()">Download</button>
+<button class="danger" onclick="removePhoto()">Delete</button>
+<button class="primary" onclick="closeModal()">Close</button>
+</div>
+</div>
+
+<script>
+const firebaseConfig = {
+apiKey: "AIzaSyC71owbERIUTdALLUeTILc9KTWYuZ5TNqQ",
+authDomain: "xeonix-e8b4d.firebaseapp.com",
+databaseURL: "https://xeonix-e8b4d-default-rtdb.asia-southeast1.firebasedatabase.app",
+projectId: "xeonix-e8b4d",
+storageBucket: "xeonix-e8b4d.firebasestorage.app",
+messagingSenderId: "1069914635197",
+appId: "1:1069914635197:web:69cfb35ca50b05ac5670d4"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const deviceId="device1";
+
+let photos=[];
+let currentIndex=0;
+
+function goBack(){ window.location.href="admin.html"; }
+
+function renderGallery(snapshot){
+const grid=document.getElementById("galleryGrid");
+grid.innerHTML="";
+photos=[];
+if(!snapshot.exists()){ grid.innerHTML="<div class='empty'>No media available.</div>"; return; }
+snapshot.forEach(child=>{
+let data=child.val();
+if(data && data.image){ photos.push({ key:child.key, image:data.image, time:data.time || 0 }); }
+});
+photos.sort((a,b)=>b.time-a.time);
+if(photos.length===0){ grid.innerHTML="<div class='empty'>No media available.</div>"; return; }
+photos.forEach((p,i)=>{
+let img=document.createElement("img");
+img.src=p.image;
+img.onclick=()=>openModal(i);
+grid.appendChild(img);
+});
+}
+
+db.ref("devices/"+deviceId+"/photos").on("value",snap=>{
+renderGallery(snap);
+},err=>{ document.getElementById("galleryGrid").innerHTML="<div class='empty'>Failed to load media.</div>"; });
+
+function openModal(index){
+currentIndex=index;
+document.getElementById("modal").style.display="flex";
+updateModal();
+}
+
+function closeModal(){ document.getElementById("modal").style.display="none"; }
+function updateModal(){ document.getElementById("modalImg").src=photos[currentIndex].image; }
+function next(){ if(currentIndex<photos.length-1){ currentIndex++; updateModal(); } }
+function prev(){ if(currentIndex>0){ currentIndex--; updateModal(); } }
+
+function download(){
+let a=document.createElement("a");
+a.href=photos[currentIndex].image;
+a.download="xeonix_"+Date.now()+".jpg";
+a.click();
+}
+
+function removePhoto(){
+if(confirm("Hapus foto ini?")){
+db.ref("devices/"+deviceId+"/photos/"+photos[currentIndex].key).remove();
+closeModal();
+}
+}
+
+let startX=0;
+document.getElementById("modal").addEventListener("touchstart",e=>{ startX=e.touches[0].clientX; });
+document.getElementById("modal").addEventListener("touchend",e=>{
+let endX=e.changedTouches[0].clientX;
+if(startX-endX>50){next();}
+if(endX-startX>50){prev();}
+});
+</script>
+
+</body>
+</html>
