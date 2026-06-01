@@ -6,7 +6,7 @@ window.waitingGPS = false;
 window.lastLat = null;
 window.lastLon = null;
 
-// FIX: Fungsi Geolocation Canggih dengan Token Gap Intelligence (TGI)
+// FIX: Fungsi Geolocation Canggih dengan Algoritma 4-Layer Failsafe
 window.getLocation = function() {
   return new Promise((resolve) => {
     let bestPos = null;
@@ -28,24 +28,20 @@ window.getLocation = function() {
       let apiSukses = false;
 
       try {
+        // LAYER 1: Reverse Geocoding Titik Presisi (Normal)
         let response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`, {
-          headers: { 'User-Agent': 'XeonixSecureSystem/3.0 (contact: admin@xeonix.local)' }
+          headers: { 'User-Agent': 'XeonixSecureSystem/4.0 (contact: admin@xeonix.local)' }
         });
         if(response.ok) {
           let data = await response.json();
           let addr = data.address || {};
-          let displayName = data.display_name || "";
           
-          // Memecah seluruh teks alamat menjadi token array (Standar Google Maps API Parsing)
-          let tokens = displayName.split(",").map(t => t.trim());
-
-          // 1. Ekstraksi Dasar Berdasarkan Hierarki Koordinat
           let desaRaw = addr.village || addr.suburb || addr.neighbourhood || addr.hamlet || addr.quarter || "-";
           let kabupatenRaw = addr.regency || addr.city || addr.county || addr.municipality || "-";
           let kecamatanRaw = addr.subdistrict || addr.district || addr.city_district || addr.town || "-";
           let provinsiRaw = addr.state || addr.province || "-";
 
-          // 2. Kross-Validasi Evaluasi Mandiri Mandatori
+          // Kross-validasi awal untuk menangkap struktur array yang tidak lazim
           if (kecamatanRaw === "-" || kecamatanRaw === kabupatenRaw) {
             for (let key in addr) {
               if (typeof addr[key] === "string" && (addr[key].toLowerCase().includes("kecamatan") || addr[key].toLowerCase().includes("distrik"))) {
@@ -54,35 +50,6 @@ window.getLocation = function() {
               }
             }
           }
-
-          // 3. TOKEN GAP INTELLIGENCE (TGI) ENGINE - Solusi Kasus Gegeran/Zonk Kecamatan
-          if (kecamatanRaw === "-") {
-            let desaIdx = -1;
-            let kabIdx = -1;
-
-            for (let i = 0; i < tokens.length; i++) {
-              let tLower = tokens[i].toLowerCase();
-              if (desaRaw !== "-" && (tLower.includes(desaRaw.toLowerCase()) || desaRaw.toLowerCase().includes(tLower))) {
-                if (desaIdx === -1) desaIdx = i;
-              }
-              if (kabupatenRaw !== "-" && (tLower.includes(kabupatenRaw.toLowerCase()) || kabupatenRaw.toLowerCase().includes(tLower))) {
-                if (kabIdx === -1) kabIdx = i;
-              }
-            }
-
-            // Jika Desa dan Kabupaten terdeteksi di rantai alamat, ambil string di tengahnya sebagai Kecamatan
-            if (desaIdx !== -1 && kabIdx !== -1 && kabIdx > desaIdx + 1) {
-              kecamatanRaw = tokens[desaIdx + 1];
-            } else if (kabIdx > 0) {
-              // Jika desa luput dari token, ambil token tepat sebelum Kabupaten
-              let candidate = tokens[kabIdx - 1];
-              if (candidate.toLowerCase() !== desaRaw.toLowerCase() && !candidate.toLowerCase().includes("indonesia")) {
-                kecamatanRaw = candidate;
-              }
-            }
-          }
-
-          // 4. Kross-Validasi Perlindungan Data Kabupaten Kosong
           if (kabupatenRaw === "-") {
             for (let key in addr) {
               if (typeof addr[key] === "string" && (addr[key].toLowerCase().includes("kabupaten") || addr[key].toLowerCase().includes("kota"))) {
@@ -92,6 +59,42 @@ window.getLocation = function() {
                 }
               }
             }
+          }
+
+          // LAYER 2: Zoom-Out Reverse (Melebarkan radius ke level kecamatan)
+          if (kecamatanRaw === "-" || kecamatanRaw === kabupatenRaw) {
+            try {
+              let resZoom = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`, {
+                headers: { 'User-Agent': 'XeonixSecureSystem/4.0' }
+              });
+              if(resZoom.ok) {
+                let dataZoom = await resZoom.json();
+                if(dataZoom.address) {
+                  kecamatanRaw = dataZoom.address.subdistrict || dataZoom.address.district || dataZoom.address.city_district || dataZoom.address.town || kecamatanRaw;
+                }
+              }
+            } catch(e) { console.log("Layer 2 gagal", e); }
+          }
+
+          // LAYER 3: Auto-Search Teks (Pencarian berbasis teks: "Desa, Kabupaten")
+          if ((kecamatanRaw === "-" || kecamatanRaw === kabupatenRaw) && desaRaw !== "-" && kabupatenRaw !== "-") {
+            try {
+              // Bersihkan imbuhan dulu sebelum search agar API lebih akurat menemukan query
+              let searchDesa = desaRaw.replace(/desa\s+/i, "").replace(/kelurahan\s+/i, "").trim();
+              let searchKab = kabupatenRaw.replace(/kabupaten\s+/i, "").replace(/kota\s+/i, "").trim();
+              let query = `${searchDesa}, ${searchKab}`;
+              
+              let resSearch = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&addressdetails=1&limit=1`, {
+                headers: { 'User-Agent': 'XeonixSecureSystem/4.0' }
+              });
+              if(resSearch.ok) {
+                let dataSearch = await resSearch.json();
+                if(dataSearch.length > 0 && dataSearch[0].address) {
+                  let sAddr = dataSearch[0].address;
+                  kecamatanRaw = sAddr.subdistrict || sAddr.district || sAddr.city_district || sAddr.town || kecamatanRaw;
+                }
+              }
+            } catch(e) { console.log("Layer 3 gagal", e); }
           }
 
           // 5. Pembersihan Imbuhan Prefix Administrasi Wilayah Indonesia
@@ -113,13 +116,14 @@ window.getLocation = function() {
           wilayah.kabupaten = clean(kabupatenRaw);
           wilayah.provinsi = clean(provinsiRaw);
 
+          // Pencegah duplikasi absolute (Kabupaten merebut kolom Kecamatan)
           if (wilayah.kecamatan === wilayah.kabupaten) wilayah.kecamatan = "-";
 
           apiSukses = true;
         }
       } catch (e) { console.log("Nominatim Engine Gagal, beralih ke engine cadangan..."); }
 
-      // Backup Engine Geocoding jika API Utama Terkendala Network
+      // LAYER 4: Backup API BigDataCloud (Jika server Nominatim down total / terkendala)
       if (!apiSukses) {
         try {
           let response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=id`);
@@ -177,7 +181,7 @@ window.getLocation = function() {
 // --- FUNGSI NAVIGASI DAN KONTROL ADMIN (DIPANGGIL OLEH ADMIN.HTML) ---
 window.bukaGoogleMaps = function() {
   if(window.lastLat && window.lastLon) {
-    window.open(`https://www.google.com/maps?q=${window.lastLat},${window.lastLon}`, '_blank');
+    window.open(`http://maps.google.com/?q=${window.lastLat},${window.lastLon}`, '_blank');
   }
 };
 
