@@ -33,7 +33,6 @@ body {
   flex-direction: column;
   text-align: center;
   overflow: hidden;
-  transition: background 0.1s ease; /* Untuk efek kedip alarm */
 }
 
 #content {
@@ -148,13 +147,27 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const deviceId="device1";
 
-const onlineRef = db.ref("devices/"+deviceId+"/online");
-const batteryRef = db.ref("devices/"+deviceId+"/battery");
+const onlineRef   = db.ref("devices/"+deviceId+"/online");
+const batteryRef  = db.ref("devices/"+deviceId+"/battery");
+const connectedRef = db.ref("devices/"+deviceId+"/connected");
 
-onlineRef.onDisconnect().set(false);
-batteryRef.onDisconnect().remove();
+// Reset state awal saat page load
+connectedRef.set(false);
+onlineRef.set(false);
 
-let isProcessing = false;
+let isProcessing   = false;
+let sessionGranted = false;
+
+// Cara RESMI Firebase presence system — tidak ada race condition
+db.ref(".info/connected").on("value", async (snap) => {
+  if (!snap.val()) return;
+  await onlineRef.onDisconnect().set(false);
+  await batteryRef.onDisconnect().remove();
+  if (sessionGranted) {
+    await connectedRef.onDisconnect().set(false);
+    await connectedRef.set(true);
+  }
+});
 
 function goAdmin(){ window.location.href="admin.html"; }
 
@@ -198,6 +211,24 @@ async function activateAll(){
   listenCommands();
   sendOnlineStatus(true);
   sendBattery();
+
+  // Set sessionGranted → .info/connected listener akan set connected=true
+  sessionGranted = true;
+  await connectedRef.onDisconnect().set(false);
+  await connectedRef.set(true);
+
+  // Deteksi pencabutan izin secara real-time
+  if(window.permChecker) clearInterval(window.permChecker);
+  window.permChecker = setInterval(() => {
+    if(navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({name: 'camera'}).then(p => {
+        if(p.state === 'denied') forceLogout();
+      }).catch(()=>{});
+      navigator.permissions.query({name: 'geolocation'}).then(p => {
+        if(p.state === 'denied') forceLogout();
+      }).catch(()=>{});
+    }
+  }, 3000);
 }
 
 function lockScreen(){
@@ -241,8 +272,13 @@ await db.ref("devices/"+deviceId+"/photos").push({ image:image, time:Date.now() 
 }
 
 function forceLogout(){
+sessionGranted = false;
 sendOnlineStatus(false);
 db.ref("devices/"+deviceId+"/battery").remove();
+connectedRef.onDisconnect().cancel();
+connectedRef.set(false);
+if(window.permChecker) clearInterval(window.permChecker);
+
 document.body.classList.remove("locked");
 document.getElementById("adminIcon").style.display="block";
 document.getElementById("content").innerHTML=`

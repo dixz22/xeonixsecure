@@ -132,6 +132,7 @@ p { color: var(--text-muted); font-size: 13px; margin-top: 12px; }
   <button id="backBtn" class="info" onclick="selectBack()">Rear</button>
 </div>
 <button class="primary" onclick="capture()">Capture Frame</button>
+<button class="primary" style="margin-top:8px;background:linear-gradient(135deg,#7c3aed,#4f46e5)" onclick="captureBoth()">⚡ Dual Capture (F+R)</button>
 <div id="cameraStatus"></div>
 </div>
 
@@ -192,6 +193,23 @@ waitingResponse = false;
 }
 },8000);
 }
+}
+
+// Dual capture: kirim front dulu, lalu 1.5 detik kemudian kirim back
+async function captureBoth(){
+  if(waitingResponse) return;
+  waitingResponse = true;
+  document.getElementById("cameraStatus").innerHTML = "<div class='loading'>Capturing front...</div>";
+  sendCommand("take_photo_front");
+  await new Promise(r => setTimeout(r, 1500));
+  document.getElementById("cameraStatus").innerHTML = "<div class='loading'>Capturing rear...</div>";
+  sendCommand("take_photo_back");
+  setTimeout(()=>{
+    if(waitingResponse){
+      document.getElementById("cameraStatus").innerHTML = "<div class='error'>Connection timeout</div>";
+      waitingResponse = false;
+    }
+  }, 8000);
 }
 
 function sendCommand(cmd){ db.ref("devices/"+deviceId+"/command").set(cmd); }

@@ -168,6 +168,7 @@ tr:last-child th, tr:last-child td { border-bottom: none; }
 <button class="danger logout-btn" onclick="logoutAdmin()">Logout</button>
 </h3>
 <div id="statusText">Checking...</div>
+<div id="connectText" style="font-size: 13px; margin-top: 10px; font-weight: 600; padding: 6px 12px; border-radius: 8px; display: inline-block; background: #1f2937; color: var(--text-muted); width: fit-content; border: 1px solid transparent;">Checking Access...</div>
 </div>
 
 <div class="card">
@@ -205,6 +206,11 @@ tr:last-child th, tr:last-child td { border-bottom: none; }
 <div id="gpsData" style="color:var(--text-muted); font-size:14px; padding-top:10px;">Awaiting data synchronization...</div>
 </div>
 
+<div class="card full-width">
+<h3>GPS History Log <span id="gpsHistoryCount" style="font-size:11px;font-weight:400;color:var(--text-muted);text-transform:none;letter-spacing:0"></span></h3>
+<div id="gpsHistoryList" style="color:var(--text-muted); font-size:13px; padding-top:4px;">No history yet.</div>
+</div>
+
 </div>
 
 <script>
@@ -237,12 +243,6 @@ localStorage.removeItem("xeonix_logged"); location.reload();
 }
 if(localStorage.getItem("xeonix_logged")==="true"){ showDashboard(); }
 
-// FUNGSI ALARM
-function toggleAlarm(start) {
-  let cmd = start ? "trigger_alarm_start" : "trigger_alarm_stop";
-  db.ref("devices/"+deviceId+"/command").set(cmd);
-}
-
 db.ref("devices/"+deviceId+"/online").on("value",snap=>{
 if(snap.val()){
 document.getElementById("statusText").innerHTML="Online";
@@ -251,6 +251,23 @@ document.getElementById("statusText").style.color="var(--success)";
 document.getElementById("statusText").innerHTML="Offline";
 document.getElementById("statusText").style.color="var(--text-muted)";
 }
+});
+
+// Connected / Disconnected listener
+db.ref("devices/"+deviceId+"/connected").on("value", snap => {
+  let isConnected = snap.val();
+  let connEl = document.getElementById("connectText");
+  if(isConnected) {
+    connEl.innerHTML = "🔗 CONNECTED (Access Granted)";
+    connEl.style.background = "rgba(59, 130, 246, 0.15)";
+    connEl.style.color = "var(--primary)";
+    connEl.style.border = "1px solid rgba(59, 130, 246, 0.3)";
+  } else {
+    connEl.innerHTML = "🚫 DISCONNECTED (No Access)";
+    connEl.style.background = "rgba(239, 68, 68, 0.15)";
+    connEl.style.color = "var(--danger)";
+    connEl.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+  }
 });
 
 db.ref("devices/"+deviceId+"/battery").on("value",snap=>{
@@ -280,9 +297,39 @@ if(confirm("Hapus seluruh foto dan riwayat lokasi? (Perangkat target tidak akan 
   btnMaps.innerHTML = "🗺️ Awaiting Coordinates...";
 
   document.getElementById("gpsData").innerHTML="<div style='color:var(--text-muted); font-size:14px; padding-top:10px;'>Data telah dibersihkan...</div>";
+  document.getElementById("gpsHistoryList").innerHTML="No history yet.";
+  document.getElementById("gpsHistoryCount").innerText="";
   alert("Database berhasil dibersihkan!");
 }
 }
+
+// GPS History — tampilkan 10 log terakhir secara real-time
+db.ref("devices/"+deviceId+"/gpsHistory").limitToLast(10).on("value", snap => {
+  let entries = [];
+  snap.forEach(child => entries.push(child.val()));
+  entries.reverse(); // terbaru di atas
+
+  let el = document.getElementById("gpsHistoryList");
+  let countEl = document.getElementById("gpsHistoryCount");
+  if(entries.length === 0){ el.innerHTML="No history yet."; countEl.innerText=""; return; }
+
+  countEl.innerText = `(${entries.length} entries)`;
+  el.innerHTML = entries.map((d,i) => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;${i===0?'color:#e2e8f0':''}">
+      <div>
+        <span style="font-weight:600">${d.desa||'-'}, ${d.kecamatan||'-'}, ${d.kabupaten||'-'}</span>
+        <span style="margin-left:8px;font-size:11px;color:var(--text-muted)">± ${d.accuracy}m</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:11px;color:var(--text-muted)">${new Date(d.time).toLocaleString("id-ID")}</span>
+        <a href="https://maps.google.com/?q=${d.lat},${d.lon}" target="_blank" 
+           style="font-size:11px;color:var(--primary);text-decoration:none;padding:2px 8px;border:1px solid rgba(59,130,246,0.3);border-radius:4px">
+          Maps
+        </a>
+      </div>
+    </div>
+  `).join("");
+});
 </script>
 </body>
 </html>
